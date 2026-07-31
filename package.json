@@ -4,6 +4,7 @@
   "private": true,
   "description": "Desktop document workspace with @-mention cross references",
   "main": "./out/main/index.js",
+  "author": "Ameer Hamza",
   "license": "MIT",
   "engines": {
     "node": ">=20.19"
@@ -27,6 +28,8 @@
     "@tiptap/react": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
     "@tiptap/suggestion": "^3.29.2",
+    "dotenv": "^8.2.0",
+    "node-fetch": "^3.3.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
