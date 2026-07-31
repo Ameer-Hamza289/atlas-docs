@@ -1,8 +1,9 @@
+assessment.md
 node_modules/
 out/
 dist/
 release/
 *.log
 .DS_Store
-.vscode/
 *.tsbuildinfo
+config.bat
