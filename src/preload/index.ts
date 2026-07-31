@@ -5,6 +5,7 @@ import type {
   AppApi,
   CreateDocumentRequest,
   DocumentId,
+  ExportRequest,
   SearchRequest,
   UpdateDocumentRequest
 } from '@shared/types'
@@ -23,8 +24,10 @@ const api: AppApi = {
     update: (request: UpdateDocumentRequest) =>
       ipcRenderer.invoke(IpcChannel.DocumentsUpdate, request),
     remove: (id: DocumentId) => ipcRenderer.invoke(IpcChannel.DocumentsDelete, id),
+    restoreLast: () => ipcRenderer.invoke(IpcChannel.DocumentsRestoreLast),
     search: (request: SearchRequest) => ipcRenderer.invoke(IpcChannel.DocumentsSearch, request),
-    backlinks: (id: DocumentId) => ipcRenderer.invoke(IpcChannel.DocumentsBacklinks, id)
+    backlinks: (id: DocumentId) => ipcRenderer.invoke(IpcChannel.DocumentsBacklinks, id),
+    export: (request: ExportRequest) => ipcRenderer.invoke(IpcChannel.DocumentsExport, request)
   },
   workspace: {
     revealStorage: () => ipcRenderer.invoke(IpcChannel.WorkspaceRevealStorage)

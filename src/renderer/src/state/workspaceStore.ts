@@ -5,15 +5,22 @@ import type {
   DocumentId,
   DocumentRecord,
   DocumentSummary,
+  ExportRequest,
   RichTextNode,
   SearchHit
 } from '@shared/types'
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+/** Transient message strip at the bottom of the window. */
+export type Notice =
+  | { kind: 'undo-delete'; message: string }
+  | { kind: 'info'; message: string }
+  | { kind: 'error'; message: string }
+
 export interface WorkspaceState {
   status: 'loading' | 'ready' | 'error'
-  error: string | null
+  notice: Notice | null
   documents: DocumentSummary[]
   activeId: DocumentId | null
   activeDocument: DocumentRecord | null
@@ -30,10 +37,13 @@ interface PendingPatch {
 }
 
 const AUTOSAVE_DEBOUNCE_MS = 400
+/** How long an undo offer stays on screen. */
+const UNDO_TIMEOUT_MS = 10_000
+const NOTICE_TIMEOUT_MS = 5_000
 
 const initialState: WorkspaceState = {
   status: 'loading',
-  error: null,
+  notice: null,
   documents: [],
   activeId: null,
   activeDocument: null,
@@ -59,6 +69,9 @@ class WorkspaceStore {
   private saveChain: Promise<void> = Promise.resolve()
   /** Guards against a slow `get` overwriting a newer navigation. */
   private loadToken = 0
+  private noticeTimer: ReturnType<typeof setTimeout> | null = null
+  /** A native dialog is open; ignore repeat requests until it closes. */
+  private exporting = false
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
@@ -150,10 +163,14 @@ class WorkspaceStore {
     this.queueSave({ id: activeDocument.id, content })
   }
 
+  /**
+   * Deletes without a confirmation prompt: the undo offer that follows is a
+   * better answer to a misclick than a dialog on every deliberate deletion.
+   */
   async deleteDocument(id: DocumentId): Promise<void> {
     try {
       if (this.pending?.id === id) this.cancelPending()
-      await window.api.documents.remove(id)
+      const removed = await window.api.documents.remove(id)
 
       const remaining = this.state.documents.filter((document) => document.id !== id)
       const history = this.state.history.filter((entry) => entry !== id)
@@ -171,9 +188,45 @@ class WorkspaceStore {
 
       await this.refreshDocuments()
       await this.refreshBacklinks()
+
+      if (removed) {
+        this.notify({ kind: 'undo-delete', message: `Deleted “${removed.title}”` }, UNDO_TIMEOUT_MS)
+      }
     } catch (error) {
       this.fail(error)
     }
+  }
+
+  /** Restores the last deletion under its original id, so references resolve again. */
+  async undoDelete(): Promise<void> {
+    try {
+      const restored = await window.api.documents.restoreLast()
+      if (!restored) {
+        this.notify({ kind: 'error', message: 'Nothing left to restore' }, NOTICE_TIMEOUT_MS)
+        return
+      }
+
+      await this.refreshDocuments()
+      await this.refreshBacklinks()
+      this.notify({ kind: 'info', message: `Restored “${restored.title}”` }, NOTICE_TIMEOUT_MS)
+    } catch (error) {
+      this.fail(error)
+    }
+  }
+
+  async exportDocument(): Promise<void> {
+    const id = this.state.activeId
+    if (id) await this.runExport({ scope: 'document', id })
+  }
+
+  async exportWorkspace(): Promise<void> {
+    await this.runExport({ scope: 'workspace' })
+  }
+
+  dismissNotice(): void {
+    if (this.noticeTimer) clearTimeout(this.noticeTimer)
+    this.noticeTimer = null
+    this.patch({ notice: null })
   }
 
   search(query: string, excludeId?: DocumentId | null): Promise<SearchHit[]> {
@@ -214,6 +267,35 @@ class WorkspaceStore {
       this.commit()
     }
     await this.saveChain
+  }
+
+  private async runExport(request: ExportRequest): Promise<void> {
+    if (this.exporting) return
+    this.exporting = true
+
+    try {
+      // Export reads from the store on disk, so pending edits must land first.
+      await this.flush()
+      const result = await window.api.documents.export(request)
+      if (result.canceled) return
+
+      const what =
+        result.fileCount > 1 ? `${result.fileCount} files` : `“${this.state.activeDocument?.title}”`
+      this.notify({ kind: 'info', message: `Exported ${what} to ${result.path}` }, 8_000)
+    } catch (error) {
+      this.fail(error)
+    } finally {
+      this.exporting = false
+    }
+  }
+
+  private notify(notice: Notice, timeout: number): void {
+    if (this.noticeTimer) clearTimeout(this.noticeTimer)
+    this.patch({ notice })
+    this.noticeTimer = setTimeout(() => {
+      this.noticeTimer = null
+      this.patch({ notice: null })
+    }, timeout)
   }
 
   private queueSave(patch: Omit<PendingPatch, 'id'> & { id: DocumentId }): void {
@@ -275,7 +357,9 @@ class WorkspaceStore {
   private fail(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error)
     console.error('[workspace]', error)
-    this.patch({ error: message, status: this.state.status === 'loading' ? 'error' : 'ready' })
+
+    this.patch({ status: this.state.status === 'loading' ? 'error' : 'ready' })
+    this.notify({ kind: 'error', message }, 8_000)
   }
 
   private patch(partial: Partial<WorkspaceState>): void {

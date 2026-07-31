@@ -3,6 +3,7 @@ import { useEffect, type JSX } from 'react'
 import type { DocumentId } from '@shared/types'
 
 import { DocumentView } from './components/DocumentView'
+import { NoticeBar } from './components/NoticeBar'
 import { Sidebar } from './components/Sidebar'
 import type { MentionDependencies } from './editor/types'
 import { useWorkspace, workspace } from './state/workspaceStore'
@@ -24,7 +25,7 @@ const openDocument = (id: DocumentId): void => void workspace.open(id)
 
 export function App(): JSX.Element {
   const status = useWorkspace((state) => state.status)
-  const error = useWorkspace((state) => state.error)
+  const notice = useWorkspace((state) => state.notice)
   const documents = useWorkspace((state) => state.documents)
   const activeId = useWorkspace((state) => state.activeId)
   const activeDocument = useWorkspace((state) => state.activeDocument)
@@ -70,15 +71,6 @@ export function App(): JSX.Element {
     }
   }, [])
 
-  const handleDelete = (id: DocumentId): void => {
-    const summary = documents.find((entry) => entry.id === id)
-    const confirmed = window.confirm(
-      `Delete “${summary?.title ?? 'this document'}”?\n\n` +
-        'References to it in other documents will remain, marked as unresolved.'
-    )
-    if (confirmed) void workspace.deleteDocument(id)
-  }
-
   if (status === 'loading') {
     return <div className="app app--loading">Loading workspace…</div>
   }
@@ -90,7 +82,8 @@ export function App(): JSX.Element {
         activeId={activeId}
         onSelect={openDocument}
         onCreate={() => void workspace.createDocument()}
-        onDelete={handleDelete}
+        onDelete={(id) => void workspace.deleteDocument(id)}
+        onExportWorkspace={() => void workspace.exportWorkspace()}
         onRevealStorage={() => void window.api.workspace.revealStorage()}
       />
 
@@ -107,6 +100,7 @@ export function App(): JSX.Element {
           onRename={(title) => workspace.rename(title)}
           onChange={(content) => workspace.setContent(content)}
           onNavigate={openDocument}
+          onExport={() => void workspace.exportDocument()}
         />
       ) : (
         <main className="document document--empty">
@@ -124,7 +118,13 @@ export function App(): JSX.Element {
         </main>
       )}
 
-      {error ? <div className="toast toast--error">{error}</div> : null}
+      {notice ? (
+        <NoticeBar
+          notice={notice}
+          onUndo={() => void workspace.undoDelete()}
+          onDismiss={() => workspace.dismissNotice()}
+        />
+      ) : null}
     </div>
   )
 }

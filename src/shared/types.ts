@@ -71,6 +71,18 @@ export interface UpdateDocumentRequest {
   content?: RichTextNode
 }
 
+/** A single document, or the whole workspace as a folder of linked files. */
+export type ExportScope = 'document' | 'workspace'
+
+export interface ExportRequest {
+  scope: ExportScope
+  id?: DocumentId
+}
+
+export type ExportResult =
+  | { canceled: true }
+  | { canceled: false; path: string; fileCount: number }
+
 /** The node type used for cross-document references inside document content. */
 export const MENTION_NODE_TYPE = 'documentMention'
 
@@ -86,8 +98,10 @@ export const IpcChannel = {
   DocumentsCreate: 'documents:create',
   DocumentsUpdate: 'documents:update',
   DocumentsDelete: 'documents:delete',
+  DocumentsRestoreLast: 'documents:restore-last',
   DocumentsSearch: 'documents:search',
   DocumentsBacklinks: 'documents:backlinks',
+  DocumentsExport: 'documents:export',
   WorkspaceRevealStorage: 'workspace:reveal-storage'
 } as const
 
@@ -99,9 +113,18 @@ export interface DocumentsApi {
   get(id: DocumentId): Promise<DocumentRecord | null>
   create(request?: CreateDocumentRequest): Promise<DocumentRecord>
   update(request: UpdateDocumentRequest): Promise<DocumentRecord>
-  remove(id: DocumentId): Promise<void>
+  remove(id: DocumentId): Promise<DeletedDocument | null>
+  /** Puts the most recently deleted document back, references and all. */
+  restoreLast(): Promise<DocumentRecord | null>
   search(request: SearchRequest): Promise<SearchHit[]>
   backlinks(id: DocumentId): Promise<Backlink[]>
+  export(request: ExportRequest): Promise<ExportResult>
+}
+
+/** What the renderer needs to offer an undo affordance after a deletion. */
+export interface DeletedDocument {
+  id: DocumentId
+  title: string
 }
 
 export interface WorkspaceApi {

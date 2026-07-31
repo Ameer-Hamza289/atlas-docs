@@ -29,6 +29,8 @@ interface StoreFile {
 
 const STORE_VERSION = 1
 const SAVE_DEBOUNCE_MS = 250
+/** Deletions are undoable for the session; the bin is not persisted. */
+const TRASH_LIMIT = 20
 
 /**
  * Owns every document mutation and the derived link index.
@@ -43,6 +45,8 @@ export class DocumentRepository {
   private documents = new Map<DocumentId, DocumentRecord>()
   /** target document id -> ids of documents referencing it. */
   private backlinkIndex = new Map<DocumentId, Set<DocumentId>>()
+  /** Deleted documents, most recent last. In memory only. */
+  private trash: DocumentRecord[] = []
   private saveTimer: NodeJS.Timeout | null = null
   private pendingWrite: Promise<void> = Promise.resolve()
   private loaded = false
@@ -120,15 +124,47 @@ export class DocumentRepository {
     return next
   }
 
-  delete(id: DocumentId): void {
-    if (!this.documents.delete(id)) return
+  /** Removes a document and returns it, so the caller can offer an undo. */
+  delete(id: DocumentId): DocumentRecord | null {
+    const removed = this.documents.get(id)
+    if (!removed) return null
 
-    this.backlinkIndex.delete(id)
+    this.documents.delete(id)
+
+    // Only the outgoing edges go away. Incoming edges are derived from other
+    // documents' content, which still references this id, so they outlive the
+    // target — references degrade to "unresolved" in the UI instead of silently
+    // mutating other documents, and a restore re-resolves them for free.
     for (const sources of this.backlinkIndex.values()) sources.delete(id)
+    this.trash.push(removed)
+    if (this.trash.length > TRASH_LIMIT) this.trash.shift()
 
-    // Existing references are intentionally left in place: they degrade to
-    // "unresolved" in the UI instead of silently mutating other documents.
     this.scheduleSave()
+    return removed
+  }
+
+  /**
+   * Puts the most recently deleted document back under its original id, which
+   * is what makes every reference to it resolve again.
+   */
+  restoreLast(): DocumentRecord | null {
+    const restored = this.trash.pop()
+    if (!restored) return null
+
+    // A new document could have taken the id in the meantime (it cannot today,
+    // ids are random, but restoring must never clobber live content).
+    if (this.documents.has(restored.id)) return null
+
+    this.documents.set(restored.id, restored)
+    this.indexDocument(restored)
+    this.scheduleSave()
+
+    return restored
+  }
+
+  /** Full records, for exporting. */
+  all(): DocumentRecord[] {
+    return [...this.documents.values()].sort((a, b) => a.title.localeCompare(b.title))
   }
 
   search(query: string, excludeId?: DocumentId | null, limit = 8): SearchHit[] {

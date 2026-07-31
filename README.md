@@ -15,8 +15,10 @@ npm run dev        # Vite dev server + Electron with HMR
 | --- | --- |
 | `npm run dev` | Development app with hot reload |
 | `npm run typecheck` | Type-checks the Node and web projects separately |
+| `npm run test` | Unit tests (Vitest) for the rich-text, storage and export logic |
 | `npm run build` | Typecheck, then bundle main, preload and renderer |
-| `npm run smoke` | Builds, then drives the real app with Playwright (8 end-to-end checks) |
+| `npm run smoke` | Builds, then drives the real app with Playwright (11 end-to-end checks) |
+| `npm run verify` | Typecheck, unit tests and smoke test in one go |
 | `npm run dist` | Produces an installer via electron-builder |
 
 On first launch the workspace is seeded with five cross-referencing documents so the feature is visible immediately.
@@ -30,6 +32,8 @@ On first launch the workspace is seeded with five cross-referencing documents so
 - **Backlinks**: every document shows what points at it, with surrounding context.
 - **Rename-safe links**: renaming a document updates every reference to it, everywhere.
 - **Unresolved references**: deleting a document leaves its references intact but visibly broken, keeping the last known title, rather than silently rewriting other people's documents.
+- **Undoable deletion**: deleting offers an undo instead of asking for confirmation, and restoring puts the document back under its original id so every reference resolves again.
+- **Markdown export**: one document, or the whole workspace as a folder of files that link to each other.
 
 ![A document with references and its backlinks](docs/screenshot-document.png)
 
@@ -38,9 +42,10 @@ On first launch the workspace is seeded with five cross-referencing documents so
 ```
 src/
   shared/      types + rich-text helpers used by every process
-  main/        document repository, link index, IPC handlers
+  main/        document repository, link index, Markdown export, IPC handlers
   preload/     contextBridge surface (the only path across the boundary)
   renderer/    React UI, Tiptap editor, workspace store
+scripts/       Playwright smoke test
 ```
 
 Data flows in one direction: the renderer asks, the main process decides.
@@ -67,6 +72,12 @@ React components ──▶ workspaceStore ──▶ window.api ──▶ preload
 
 **The editor layer is dependency-injected.** `createMentionSuggestion({ search, createDocument, navigate })` and `DocumentMention.configure({ navigate })` keep the Tiptap code free of store imports; `App` wires the two together. It also makes the mention behaviour testable without an Electron window.
 
+**Undo instead of a confirmation dialog.** A prompt taxes every deliberate deletion to guard against the rare misclick; an undo offer does the opposite. The repository keeps deleted records in an in-memory bin and restores them under their original id, which is the only reason references can come back to life — a restore that minted a new id would leave every mention permanently broken. The bin is session-scoped: surviving a restart would mean persisting deleted content, which is a different feature (a trash folder) with its own expectations.
+
+**The link index is derived from content, not from existence.** Deleting a document removes its outgoing edges but leaves the incoming ones, because other documents genuinely still contain those references. That keeps the index a pure function of stored content, makes "unresolved" the honest description of the state, and makes restoring a document an O(1) operation instead of a full reindex.
+
+**Export writes a folder, not a file.** "References rendered as links" only means something if the link targets exist, so a workspace export emits one file per document with deterministic slugs (collisions get a numeric suffix), relative `[Title](./slug.md)` links between them, and an `index.md`. References whose target is gone — or is not part of a single-document export — degrade to plain `@Title` text rather than dangling links. The Markdown converter is a pure function of the content tree, which is why it is the easiest part of the app to test.
+
 **Two levels of debounce.** Edits coalesce for 400 ms in the renderer before an IPC round trip, then writes coalesce again for 250 ms in the repository before touching the disk. Pending work is flushed on navigation, on delete, on window blur, and on `before-quit`, so nothing is lost between the last keystroke and quitting.
 
 ### Edge cases worth calling out
@@ -80,13 +91,18 @@ React components ──▶ workspaceStore ──▶ window.api ──▶ preload
 
 ## Testing
 
-`npm run smoke` launches the built app in a throwaway `userData` directory and walks the real flow with Playwright: seeding, clicking a reference, back navigation, `@` search, insertion, backlink appearance, and rename propagation. It is a smoke test rather than a suite — the eight checks cover the paths that would break the feature, and the pure logic in `src/shared/richText.ts` and `DocumentRepository` is written to be unit-testable when a suite is warranted.
+Two layers, split by what each is good at.
+
+**Unit tests** (`npm run test`, 61 tests) cover the logic that is pure or file-backed, where exhaustive cases are cheap: rich-text traversal and relabelling, the repository against a temp directory (seeding, corrupt-file recovery, persistence round trips, the backlink index, rename propagation, delete/restore ordering, search ranking), the Markdown converter, and the export writer.
+
+**A smoke test** (`npm run smoke`, 11 checks) drives the real application with Playwright in a throwaway `userData` directory, because the interesting risk in the UI is integration, not logic: seeding, clicking a reference, back navigation, `@` search, insertion, backlink appearance, rename propagation, undoing a deletion, and an export (with the native save dialog stubbed in the main process) whose output is read back off disk.
+
+Both layers earned their keep. The repository tests caught a restored document coming back with no incoming references, and the smoke test caught the `@` menu inserting the wrong item: the popup can open under a resting mouse pointer, `mouseenter` then fired on whatever option landed under it, and the keyboard highlight moved — so pressing Enter chose a neighbour. Highlighting on `mousemove` fixes it, and both tests now assert against a regression.
 
 ## If I kept going
 
-- Unit tests around the repository and link index (search scoring and relabelling are the fiddly parts).
 - Full-text search across the workspace, and a quick-open palette — the scoring function already exists.
 - Move to SQLite + FTS5 once workspaces get large; the repository interface is the seam.
-- Undo a deletion, since references currently survive the target.
-- Export to Markdown with references rendered as links.
+- A persistent trash folder, so deletions survive a restart rather than only the session.
+- Markdown *import*, which is mostly the converter run backwards, plus resolving `[[wiki links]]` to ids.
 - Multi-window support would need the main process to broadcast change events; today the renderer is the single reader of its own writes.

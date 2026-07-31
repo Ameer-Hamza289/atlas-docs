@@ -23,6 +23,7 @@ interface DocumentViewProps {
   onRename(title: string): void
   onChange(content: RichTextNode): void
   onNavigate(id: DocumentId): void
+  onExport(): void
 }
 
 const SAVE_LABELS: Record<SaveState, string> = {
@@ -43,7 +44,8 @@ export function DocumentView({
   onForward,
   onRename,
   onChange,
-  onNavigate
+  onNavigate,
+  onExport
 }: DocumentViewProps): JSX.Element {
   return (
     <main className="document">
@@ -74,6 +76,14 @@ export function DocumentView({
         <div className="document__status">
           <span className="document__updated">Edited {formatRelativeTime(document.updatedAt)}</span>
           <span className={`save-state save-state--${saveState}`}>{SAVE_LABELS[saveState]}</span>
+          <button
+            type="button"
+            className="button"
+            onClick={onExport}
+            title="Export this document as Markdown"
+          >
+            Export
+          </button>
         </div>
       </header>
 

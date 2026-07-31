@@ -100,7 +100,9 @@ export function MentionList({
           data-active={itemIndex === index}
           // mousedown would move focus out of the editor before the click lands.
           onMouseDown={(event) => event.preventDefault()}
-          onMouseEnter={() => setIndex(itemIndex)}
+          // Deliberately mousemove, not mouseenter: the popup often opens under a
+          // resting pointer, and mouseenter would then steal the keyboard highlight.
+          onMouseMove={() => setIndex(itemIndex)}
           onClick={() => select(item)}
         >
           {item.kind === 'document' ? (

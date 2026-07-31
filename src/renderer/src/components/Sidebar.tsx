@@ -10,6 +10,7 @@ interface SidebarProps {
   onSelect(id: DocumentId): void
   onCreate(): void
   onDelete(id: DocumentId): void
+  onExportWorkspace(): void
   onRevealStorage(): void
 }
 
@@ -19,6 +20,7 @@ export function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onExportWorkspace,
   onRevealStorage
 }: SidebarProps): JSX.Element {
   const [filter, setFilter] = useState('')
@@ -97,9 +99,14 @@ export function Sidebar({
       </nav>
 
       <footer className="sidebar__footer">
-        <button type="button" className="sidebar__link" onClick={onRevealStorage}>
-          Show data file
-        </button>
+        <div className="sidebar__links">
+          <button type="button" className="sidebar__link" onClick={onExportWorkspace}>
+            Export workspace
+          </button>
+          <button type="button" className="sidebar__link" onClick={onRevealStorage}>
+            Show data file
+          </button>
+        </div>
         <span className="sidebar__hint">
           <kbd>Ctrl</kbd>+<kbd>N</kbd> new · <kbd>@</kbd> reference
         </span>

@@ -1,15 +1,21 @@
-import { ipcMain, shell } from 'electron'
+import { basename, dirname, join } from 'node:path'
+
+import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 
 import { IpcChannel } from '@shared/types'
 import type {
   CreateDocumentRequest,
   DocumentId,
+  ExportRequest,
+  ExportResult,
   RichTextNode,
   SearchRequest,
   UpdateDocumentRequest
 } from '@shared/types'
 
 import type { DocumentRepository } from './documentRepository'
+import { exportDocumentTo, exportWorkspaceTo } from './exportService'
+import { slugify } from './markdown'
 
 /**
  * Every renderer request crosses this boundary, so arguments are validated here
@@ -36,8 +42,11 @@ export function registerIpcHandlers(repository: DocumentRepository, storePath: s
   })
 
   ipcMain.handle(IpcChannel.DocumentsDelete, (_event, id: unknown) => {
-    repository.delete(requireId(id))
+    const removed = repository.delete(requireId(id))
+    return removed ? { id: removed.id, title: removed.title } : null
   })
+
+  ipcMain.handle(IpcChannel.DocumentsRestoreLast, () => repository.restoreLast())
 
   ipcMain.handle(IpcChannel.DocumentsSearch, (_event, request: unknown) => {
     const { query, excludeId, limit } = requireObject<SearchRequest>(request)
@@ -52,9 +61,71 @@ export function registerIpcHandlers(repository: DocumentRepository, storePath: s
     repository.backlinks(requireId(id))
   )
 
+  ipcMain.handle(
+    IpcChannel.DocumentsExport,
+    (event, request: unknown): Promise<ExportResult> => {
+      const { scope, id } = requireObject<ExportRequest>(request)
+      return scope === 'workspace'
+        ? exportWorkspace(event, repository)
+        : exportSingleDocument(event, repository, requireId(id))
+    }
+  )
+
   ipcMain.handle(IpcChannel.WorkspaceRevealStorage, () => {
     shell.showItemInFolder(storePath)
   })
+}
+
+async function exportSingleDocument(
+  event: IpcMainInvokeEvent,
+  repository: DocumentRepository,
+  id: DocumentId
+): Promise<ExportResult> {
+  const document = repository.get(id)
+  if (!document) throw new Error(`Document not found: ${id}`)
+
+  const { canceled, filePath } = await dialog.showSaveDialog(windowFor(event), {
+    title: 'Export document as Markdown',
+    defaultPath: `${slugify(document.title) || 'untitled'}.md`,
+    filters: [{ name: 'Markdown', extensions: ['md'] }]
+  })
+
+  if (canceled || !filePath) return { canceled: true }
+
+  const fileCount = await exportDocumentTo(withExtension(filePath), document, repository.all())
+  return { canceled: false, path: filePath, fileCount }
+}
+
+async function exportWorkspace(
+  event: IpcMainInvokeEvent,
+  repository: DocumentRepository
+): Promise<ExportResult> {
+  const { canceled, filePaths } = await dialog.showOpenDialog(windowFor(event), {
+    title: 'Choose a folder for the exported workspace',
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Export here'
+  })
+
+  const target = filePaths?.[0]
+  if (canceled || !target) return { canceled: true }
+
+  // Export into a subfolder so we never scatter files into an existing directory.
+  const directory = join(target, 'atlas-export')
+  const fileCount = await exportWorkspaceTo(directory, repository.all())
+
+  return { canceled: false, path: directory, fileCount }
+}
+
+function windowFor(event: IpcMainInvokeEvent): BrowserWindow {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (!window) throw new Error('No window for this request')
+  return window
+}
+
+function withExtension(filePath: string): string {
+  return filePath.toLowerCase().endsWith('.md')
+    ? filePath
+    : join(dirname(filePath), `${basename(filePath)}.md`)
 }
 
 function requireObject<T>(value: unknown): Partial<T> {
