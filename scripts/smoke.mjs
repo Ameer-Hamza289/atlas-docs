@@ -49,6 +49,13 @@ async function main() {
   )
   step('clicking a reference navigates to the target document')
 
+  // The editor must follow navigation, not just the title and side panels.
+  const architecture = await page.textContent('.editor__surface')
+  if (!architecture?.includes('Three processes, one direction of trust')) {
+    throw new Error(`editor still shows the previous document: ${architecture?.slice(0, 60)}`)
+  }
+  step('the editor shows the target document, not the previous one')
+
   await page.click('.button--icon >> nth=0')
   await page.waitForFunction(
     () => document.querySelector('.document__title')?.value === 'Welcome to Atlas',
@@ -125,10 +132,14 @@ async function main() {
 
   await page.screenshot({ path: 'docs/screenshot-document.png' })
 
-  // Deleting is undoable, so it happens without a confirmation prompt.
-  await page.hover('.doc-item >> nth=2')
-  const doomed = (await page.textContent('.doc-item >> nth=2 >> .doc-item__title'))?.trim()
-  await page.click('.doc-item >> nth=2 >> .doc-item__delete')
+  // Deleting is undoable, so it happens without a confirmation prompt. Target a
+  // document by title: positions shift as edits reorder the sidebar.
+  const doomed = 'Storage Options'
+  const doomedItem = page.locator('.doc-item', {
+    has: page.locator('.doc-item__title', { hasText: new RegExp(`^${doomed}$`) })
+  })
+  await doomedItem.hover()
+  await doomedItem.locator('.doc-item__delete').click()
   await page.waitForSelector(`.notice--undo-delete >> text=Deleted “${doomed}”`, { timeout: 5000 })
   await page.waitForFunction(
     (title) =>
@@ -159,17 +170,48 @@ async function main() {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath })
   }, exportPath)
 
+  const exportedTitle = await page.inputValue('.document__title')
   await page.click('.document__status .button')
   await page.waitForSelector('.notice >> text=Exported', { timeout: 5000 })
 
   const exported = await readFile(exportPath, 'utf8')
-  if (!exported.startsWith('# Welcome to Atlas')) {
-    throw new Error(`unexpected export heading: ${exported.slice(0, 40)}`)
+  if (!exported.startsWith(`# ${exportedTitle}`)) {
+    throw new Error(`export heading does not match the open document: ${exported.slice(0, 40)}`)
   }
   if (!/\[.+\]\(\.\/.+\.md\)/.test(exported)) {
     throw new Error('export did not render references as Markdown links')
   }
   step('exporting writes Markdown with references as links')
+
+  // Undo must not reach across documents. Sharing one editor instance between
+  // documents would let Ctrl+Z here revert content that belongs elsewhere.
+  const marker = 'UNDO-PROBE'
+  await page.locator('.editor__surface > *').last().click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(` ${marker}`)
+  await page.waitForTimeout(900)
+
+  await page.locator('.doc-item__title', { hasText: /^Glossary$/ }).click()
+  await page.waitForFunction(
+    () => document.querySelector('.document__title')?.value === 'Glossary',
+    null,
+    { timeout: 5000 }
+  )
+
+  const beforeUndo = await page.textContent('.editor__surface')
+  await page.click('.editor__surface')
+  await page.keyboard.press('Control+z')
+  await page.keyboard.press('Control+z')
+  await page.waitForTimeout(500)
+  const afterUndo = await page.textContent('.editor__surface')
+
+  if (afterUndo?.includes(marker)) {
+    throw new Error('undo pulled content in from another document')
+  }
+  if (afterUndo !== beforeUndo) {
+    throw new Error(`undo altered a document it did not belong to:\n${afterUndo}`)
+  }
+  step('undo history does not leak across documents')
 
   console.log(`\n${steps.length} checks passed`)
 }

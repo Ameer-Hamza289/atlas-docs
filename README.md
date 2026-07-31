@@ -17,7 +17,7 @@ npm run dev        # Vite dev server + Electron with HMR
 | `npm run typecheck` | Type-checks the Node and web projects separately |
 | `npm run test` | Unit tests (Vitest) for the rich-text, storage and export logic |
 | `npm run build` | Typecheck, then bundle main, preload and renderer |
-| `npm run smoke` | Builds, then drives the real app with Playwright (11 end-to-end checks) |
+| `npm run smoke` | Builds, then drives the real app with Playwright (13 end-to-end checks) |
 | `npm run verify` | Typecheck, unit tests and smoke test in one go |
 | `npm run dist` | Produces an installer via electron-builder |
 
@@ -87,7 +87,7 @@ React components ──▶ workspaceStore ──▶ window.api ──▶ preload
 - Save requests are chained rather than fired in parallel, so out-of-order writes cannot resurrect stale content.
 - A corrupt or missing store file falls back to seed content instead of crashing on launch.
 - Self-references are excluded from both the `@` menu and the link index.
-- The editor remounts per document, so undo history never leaks across documents.
+- The editor is keyed by document id, so opening a document mounts a fresh ProseMirror state: neither content nor undo history carries over from the document you just left.
 
 ## Testing
 
@@ -95,11 +95,13 @@ Two layers, split by what each is good at.
 
 **Unit tests** (`npm run test`, 61 tests) cover the logic that is pure or file-backed, where exhaustive cases are cheap: rich-text traversal and relabelling, the repository against a temp directory (seeding, corrupt-file recovery, persistence round trips, the backlink index, rename propagation, delete/restore ordering, search ranking), the Markdown converter, and the export writer.
 
-**A smoke test** (`npm run smoke`, 11 checks) drives the real application with Playwright in a throwaway `userData` directory, because the interesting risk in the UI is integration, not logic: seeding, clicking a reference, back navigation, `@` search, insertion, backlink appearance, rename propagation, undoing a deletion, and an export (with the native save dialog stubbed in the main process) whose output is read back off disk.
+**A smoke test** (`npm run smoke`, 13 checks) drives the real application with Playwright in a throwaway `userData` directory, because the interesting risk in the UI is integration, not logic: seeding, clicking a reference, the editor actually swapping to that document, back navigation, `@` search, insertion, backlink appearance, rename propagation, undo isolation between documents, undoing a deletion, and an export (with the native save dialog stubbed in the main process) whose output is read back off disk.
 
-Both layers earned their keep. The repository tests caught a restored document coming back with no incoming references, and the smoke test caught the `@` menu inserting the wrong item: the popup can open under a resting mouse pointer, `mouseenter` then fired on whatever option landed under it, and the keyboard highlight moved — so pressing Enter chose a neighbour. Highlighting on `mousemove` fixes it, and both tests now assert against a regression.
+Both layers earned their keep, and the smoke test found the worst bug in the project. The editor component was memoised on document id but never given a `key`, so it mounted once and **never swapped content**: the title, sidebar and backlinks all followed navigation, which made the app look correct in every screenshot, while the editor kept showing the first document opened. Any edit after navigating therefore saved one document's content into another. It surfaced indirectly, as an export containing one document's title above another's body — the assertion that caught it was never aimed at this. A `key={document.id}` fixes it, and the suite now checks the editor body after navigating rather than trusting the title.
 
-## If I kept going
+Two smaller ones: the repository tests caught a restored document coming back with no incoming references, and the smoke test caught the `@` menu inserting the wrong item, because the popup can open under a resting mouse pointer, `mouseenter` then fires on whatever option lands beneath it, and the keyboard highlight moves — so Enter chose a neighbour. Highlighting on `mousemove` fixes that one. All three have regression checks.
+
+## Future Implementation
 
 - Full-text search across the workspace, and a quick-open palette — the scoring function already exists.
 - Move to SQLite + FTS5 once workspaces get large; the repository interface is the seam.

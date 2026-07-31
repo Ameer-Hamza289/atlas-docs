@@ -8,7 +8,15 @@ import type { SaveState } from '../state/workspaceStore'
 import { BacklinksPanel } from './BacklinksPanel'
 import { DocumentEditor } from './DocumentEditor'
 
-/** Remount the editor only when the document identity changes, not on every keystroke. */
+/**
+ * Two separate concerns, deliberately combined:
+ *
+ * - the `key` at the call site remounts the editor when the open document
+ *   changes, so ProseMirror state — content and undo history — never carries
+ *   over from the previous document;
+ * - `memo` skips re-renders while that document stays open, since autosave
+ *   patches the document object on every keystroke.
+ */
 const KeyedEditor = memo(DocumentEditor, (previous, next) => previous.document.id === next.document.id)
 
 interface DocumentViewProps {
@@ -97,7 +105,12 @@ export function DocumentView({
             onChange={(event) => onRename(event.target.value)}
           />
 
-          <KeyedEditor document={document} dependencies={dependencies} onChange={onChange} />
+          <KeyedEditor
+            key={document.id}
+            document={document}
+            dependencies={dependencies}
+            onChange={onChange}
+          />
 
           <BacklinksPanel backlinks={backlinks} onNavigate={onNavigate} />
         </div>
