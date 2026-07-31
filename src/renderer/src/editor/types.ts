@@ -20,3 +20,6 @@ export interface MentionDependencies {
   createDocument(title: string): Promise<MentionSelection | null>
   navigate(id: DocumentId): void
 }
+
+/** The @ menu searches and creates; navigation is the node view's concern. */
+export type SuggestionDependencies = Pick<MentionDependencies, 'search' | 'createDocument'>

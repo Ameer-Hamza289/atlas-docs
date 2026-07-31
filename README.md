@@ -70,7 +70,7 @@ React components ──▶ workspaceStore ──▶ window.api ──▶ preload
 
 **One observable store, not context.** `workspaceStore` is a plain observable consumed through `useSyncExternalStore`. Tiptap node views and the suggestion plugin render outside the normal component tree, and a module-level store lets them read titles and trigger navigation without threading context through the editor. Components subscribe with selectors so a keystroke does not re-render the sidebar.
 
-**The editor layer is dependency-injected.** `createMentionSuggestion({ search, createDocument, navigate })` and `DocumentMention.configure({ navigate })` keep the Tiptap code free of store imports; `App` wires the two together. It also makes the mention behaviour testable without an Electron window.
+**The editor layer is dependency-injected.** `createMentionSuggestion({ search, createDocument })` and `DocumentMention.configure({ navigate })` keep the Tiptap code free of store imports; `App` wires the two together. It also makes the mention behaviour testable without an Electron window.
 
 **Undo instead of a confirmation dialog.** A prompt taxes every deliberate deletion to guard against the rare misclick; an undo offer does the opposite. The repository keeps deleted records in an in-memory bin and restores them under their original id, which is the only reason references can come back to life — a restore that minted a new id would leave every mention permanently broken. The bin is session-scoped: surviving a restart would mean persisting deleted content, which is a different feature (a trash folder) with its own expectations.
 

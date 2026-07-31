@@ -221,7 +221,6 @@ export class DocumentRepository {
       title: document.title,
       excerpt: truncate(toPlainText(document.content), 120),
       updatedAt: document.updatedAt,
-      createdAt: document.createdAt,
       backlinkCount: this.backlinkIndex.get(document.id)?.size ?? 0
     }
   }

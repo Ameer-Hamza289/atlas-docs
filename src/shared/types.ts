@@ -35,7 +35,6 @@ export interface DocumentSummary {
   title: string
   excerpt: string
   updatedAt: string
-  createdAt: string
   /** Number of other documents referencing this one. */
   backlinkCount: number
 }
@@ -104,8 +103,6 @@ export const IpcChannel = {
   DocumentsExport: 'documents:export',
   WorkspaceRevealStorage: 'workspace:reveal-storage'
 } as const
-
-export type IpcChannelName = (typeof IpcChannel)[keyof typeof IpcChannel]
 
 /** The full surface exposed to the renderer through `window.api`. */
 export interface DocumentsApi {

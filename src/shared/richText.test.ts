@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   collectMentionIds,
   countMentionsOf,
-  createParagraphDocument,
   mentionContext,
   relabelMentions,
   toPlainText,
@@ -23,9 +22,13 @@ function doc(...content: RichTextNode[]): RichTextNode {
   return { type: 'doc', content }
 }
 
+function paragraphs(...texts: string[]): RichTextNode {
+  return doc(...texts.map((text) => paragraph({ type: 'text', text })))
+}
+
 describe('toPlainText', () => {
   it('joins block content with line breaks', () => {
-    const content = createParagraphDocument(['First line', 'Second line'])
+    const content = paragraphs('First line', 'Second line')
     expect(toPlainText(content)).toBe('First line\nSecond line')
   })
 
@@ -128,7 +131,7 @@ describe('mentionContext', () => {
   })
 
   it('falls back to leading text when the reference is missing', () => {
-    const content = createParagraphDocument(['Just some text'])
+    const content = paragraphs('Just some text')
     expect(mentionContext(content, 'missing')).toBe('Just some text')
   })
 })

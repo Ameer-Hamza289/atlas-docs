@@ -20,16 +20,6 @@ export function createEmptyDocument(): RichTextNode {
   return { type: 'doc', content: [{ type: 'paragraph' }] }
 }
 
-export function createParagraphDocument(paragraphs: string[]): RichTextNode {
-  return {
-    type: 'doc',
-    content: paragraphs.map((text) => ({
-      type: 'paragraph',
-      content: text ? [{ type: 'text', text }] : undefined
-    }))
-  }
-}
-
 function walk(node: RichTextNode | undefined, visit: (node: RichTextNode) => void): void {
   if (!node) return
   visit(node)

@@ -5,7 +5,7 @@ import { exitSuggestion, type SuggestionOptions } from '@tiptap/suggestion'
 import { MENTION_ID_ATTR, MENTION_LABEL_ATTR, MENTION_NODE_TYPE } from '@shared/types'
 
 import { MentionList, type MentionListHandle, type MentionListProps } from './MentionList'
-import type { MentionDependencies, MentionItem, MentionSelection } from './types'
+import type { MentionItem, MentionSelection, SuggestionDependencies } from './types'
 
 export const mentionPluginKey = new PluginKey('documentMention')
 
@@ -13,7 +13,7 @@ export const mentionPluginKey = new PluginKey('documentMention')
 const MAX_QUERY_LENGTH = 48
 
 export function createMentionSuggestion(
-  dependencies: MentionDependencies
+  dependencies: SuggestionDependencies
 ): Omit<SuggestionOptions<MentionItem, MentionSelection>, 'editor'> {
   return {
     char: '@',

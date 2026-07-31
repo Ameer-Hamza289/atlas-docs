@@ -49,8 +49,7 @@ export function DocumentEditor({
           navigate: (id) => dependenciesRef.current.navigate(id),
           suggestion: createMentionSuggestion({
             search: (query) => dependenciesRef.current.search(query),
-            createDocument: (title) => dependenciesRef.current.createDocument(title),
-            navigate: (id) => dependenciesRef.current.navigate(id)
+            createDocument: (title) => dependenciesRef.current.createDocument(title)
           })
         })
       ],
