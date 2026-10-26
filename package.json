@@ -10,9 +10,9 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "dev": "node api.js && electron-vite dev",
-    "start": "node api.js && electron-vite preview",
-    "build": "node api.js && npm run typecheck && electron-vite build",
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "npm run typecheck && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
